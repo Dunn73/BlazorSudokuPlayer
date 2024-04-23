@@ -11,11 +11,15 @@
             var rowIndex = i;
             var colIndex = j;
             <td>
-                <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="2"
+
+                <!-- Prevents user from typing anything other than 1-9 -->
+                <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="2" maxlength="1"
                  
                  @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)" 
-                 onkeypress="return event.key >= '1' && event.key <= '9'" 
+                 onkeypress="return event.key >= '1' && event.key <= '9'"
+                 style="color: @GridColors[rowIndex, colIndex]"
                  />
+                 
             </td>
         }
     </tr>
@@ -28,6 +32,7 @@
 
 @code {
     char?[,] GridValues = new char?[9, 9]; 
+    string[,] GridColors = new string[9, 9]; // Add this line to declare GridColors array
     static SudokuInfo[]? sudokuInfo;
     int currentSudokuId = 0;
     void GenerateSudoku(){
@@ -37,7 +42,12 @@
         int randomNumber = random.Next(sudokuInfo.Length);
 
         PopulateGridFromPuzzle(randomNumber);
+        SaveGridToLocalStorage();
      }
+     protected override async Task OnInitializedAsync(){
+        sudokuInfo = await Http.GetFromJsonAsync<SudokuInfo[]>("sample-data/ValidSudokus.json");
+        await PopulateGridFromLocalStorage(); // Populate the grid from local storage
+    }
     async Task SaveTextToLocalStorage(int row, int col, ChangeEventArgs e){
         Console.WriteLine($"Saving value at row {row}, column {col}");
         if (row >= 0 && row < 9 && col >= 0 && col < 9){
@@ -54,34 +64,84 @@
             Console.WriteLine("Invalid row or column index");
         }
     }
-    void WipeBoard(){
+    async Task SaveGridToLocalStorage() {
+        for (int i = 0; i < 9; i++) {
+            for (int j = 0; j < 9; j++) {
+                if (GridValues[i, j] != null) {
+                    await localStorage.SetItemAsync($"GridValue_{i}_{j}", GridValues[i, j].ToString());
+                } 
+                else {
+                    await localStorage.SetItemAsync($"GridValue_{i}_{j}", '.'); 
+                }
+            }
+        }
+    }
+    async Task WipeGridFromLocalStorage() {
+
+        // Create a list to hold all keys related to the grid
+        var keys = new List<string>();
+        for (int i = 0; i < 9; i++) {
+            for (int j = 0; j < 9; j++) {
+                keys.Add($"GridValue_{i}_{j}");
+            }
+        }
+        // Clear all items in local storage using these keys
+        foreach (var key in keys) {
+            await localStorage.RemoveItemAsync(key);
+        }
+    }
+    async Task WipeBoard(){
         for (int i = 0; i < 9; i++){
             for (int j = 0; j < 9; j++){
                 GridValues[i, j] = null;
             }
         }
+        await WipeGridFromLocalStorage(); // Call the method after clearing the grid in memory
     }
 
-     protected override async Task OnInitializedAsync()
-    {
-        sudokuInfo = await Http.GetFromJsonAsync<SudokuInfo[]>("sample-data/ValidSudokus.json");
-       // GenerateSudoku();
-    }
-    void PopulateGridFromPuzzle(int puzzleId)
-    {
-
+    void PopulateGridFromPuzzle(int puzzleId) {
         string puzzle = sudokuInfo[puzzleId].Puzzle;
-
         int index = 0;
-        for (int i = 0; i < 9; i++)
-        {
-            for (int j = 0; j < 9; j++)
-            {
+        for (int i = 0; i < 9; i++) {
+            for (int j = 0; j < 9; j++) {
+                GridColors[i,j] = "black";
                 GridValues[i, j] = puzzle[index++];
+                if (GridValues[i, j] != null) {
+                    char value = GridValues[i, j].Value;
+                    if (value == '.'){
+                        GridValues[i, j] = null;
+                    }
+                    else {
+                        // Change the color based on the value
+                        GridColors[i,j] = "blue";
+                        
+                    }
+                }
             }
         }
-    
     }
+    async Task PopulateGridFromLocalStorage() {
+        for (int i = 0; i < 9; i++) {
+            for (int j = 0; j < 9; j++) {
+                // Retrieve the value from local storage
+                var gridValue = await localStorage.GetItemAsync<char?>($"GridValue_{i}_{j}");
+                // Set the grid value and color
+                GridValues[i, j] = gridValue;
+                if (gridValue != null) {
+                    char value = gridValue.Value;
+                    if (value == '.') {
+                        GridValues[i, j] = null;
+                        GridColors[i, j] = "black";
+                    }
+                    else {
+                        GridColors[i, j] = "blue"; // Or any other color based on your requirement
+                    }
+                }
+            }
+        }
+    }
+
+
     public class SudokuInfo
 {
     public int Id {get; set;}
