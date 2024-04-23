@@ -75,3 +75,15 @@ main {
         padding-right: 1.5rem !important;
     }
 }
+
+    .grid-item {
+        width: 40px; /* Set the width and height to the same value */
+        height: 40px;
+    }
+
+    .grid-item input {
+        width: 100%; /* Ensure the input fills the entire cell */
+        height: 100%;
+        font-size: 16px; /* Adjust font size as needed */
+        text-align: center; /* Center align text */
+    }

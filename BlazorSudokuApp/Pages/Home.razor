@@ -2,31 +2,44 @@
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
 @inject HttpClient Http
 
-<h1>9x9 Grid</h1>
+<h1>9x9 Sudoku</h1>
 
-    <table border="1" id="0">
-        @for (int i = 0; i < 9; i++){
-    <tr class="grid-item">
-        @for (int j = 0; j < 9; j++){
-            var rowIndex = i;
-            var colIndex = j;
-            <td>
-
-                <!-- Prevents user from typing anything other than 1-9 -->
-                <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="2" maxlength="1"
-                 
-                 @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)" 
-                 onkeypress="return event.key >= '1' && event.key <= '9'"
-                 style="color: @GridColors[rowIndex, colIndex]"
-                 />
-                 
-            </td>
-        }
-    </tr>
-}
+    <table border="5" cellpadding="0" cellspacing="0">
+    @for (int i = 0; i < 9; i += 3)
+    {
+        <tr>
+            @for (int j = 0; j < 9; j += 3)
+            {
+                <td>
+                    <table border="1" cellpadding="2">
+                        @for (int k = 0; k < 3; k++)
+                        {
+                            <tr>
+                                @for (int l = 0; l < 3; l++)
+                                {
+                                    var rowIndex = i + k;
+                                    var colIndex = j + l;
+                                    <td style="border: 3px solid black;">
+                                        <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="1" maxlength="1" 
+                                               @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)" 
+                                               onkeypress="return event.key >= '1' && event.key <= '9'"
+                                               style="color: @GridColors[rowIndex, colIndex]; width: 50px; height: 50px; text-align: center; font-size: 2.3em;"
+                                               readonly="@(GridColors[rowIndex, colIndex] == "blue" ? true : false)" 
+                                               />
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </table>
+                </td>
+            }
+        </tr>
+    }
     </table>
+    <div style="margin-top: 10px;"> <!-- Adjust margin-top as needed -->
     <button @onclick="GenerateSudoku">Generate Board</button>
-    <button @onclick="WipeBoard">Board Wipe</button>
+    <button @onclick="WipeBoard" style="margin-left: 10px;">Clear Board</button> <!-- Adjust margin-left as needed -->
+    </div>
 
     
 
@@ -94,6 +107,7 @@
         for (int i = 0; i < 9; i++){
             for (int j = 0; j < 9; j++){
                 GridValues[i, j] = null;
+                GridColors[i,j] = "black"; // Changes the color of the number in the grid to turn off readonly
             }
         }
         await WipeGridFromLocalStorage(); // Call the method after clearing the grid in memory
