@@ -1,0 +1,92 @@
+﻿@page "/"
+@inject Blazored.LocalStorage.ILocalStorageService localStorage
+@inject HttpClient Http
+
+<h1>9x9 Grid</h1>
+
+    <table border="1" id="0">
+        @for (int i = 0; i < 9; i++){
+    <tr class="grid-item">
+        @for (int j = 0; j < 9; j++){
+            var rowIndex = i;
+            var colIndex = j;
+            <td>
+                <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="2"
+                 
+                 @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)" 
+                 onkeypress="return event.key >= '1' && event.key <= '9'" 
+                 />
+            </td>
+        }
+    </tr>
+}
+    </table>
+    <button @onclick="GenerateSudoku">Generate Board</button>
+    <button @onclick="WipeBoard">Board Wipe</button>
+
+    
+
+@code {
+    char?[,] GridValues = new char?[9, 9]; 
+    static SudokuInfo[]? sudokuInfo;
+    int currentSudokuId = 0;
+    void GenerateSudoku(){
+        Console.WriteLine("The testing button is working");
+
+        Random random = new Random();
+        int randomNumber = random.Next(sudokuInfo.Length);
+
+        PopulateGridFromPuzzle(randomNumber);
+     }
+    async Task SaveTextToLocalStorage(int row, int col, ChangeEventArgs e){
+        Console.WriteLine($"Saving value at row {row}, column {col}");
+        if (row >= 0 && row < 9 && col >= 0 && col < 9){
+            try {
+                GridValues[row, col] = (char?)e.Value.ToString()[0];
+                Console.WriteLine($"Grid value: {GridValues[row, col]}");
+                await localStorage.SetItemAsync($"GridValue_{row}_{col}", GridValues[row, col].ToString());
+            }
+            catch {
+                await localStorage.SetItemAsync($"GridValue_{row}_{col}", '.');
+            }
+        }
+        else{
+            Console.WriteLine("Invalid row or column index");
+        }
+    }
+    void WipeBoard(){
+        for (int i = 0; i < 9; i++){
+            for (int j = 0; j < 9; j++){
+                GridValues[i, j] = null;
+            }
+        }
+    }
+
+     protected override async Task OnInitializedAsync()
+    {
+        sudokuInfo = await Http.GetFromJsonAsync<SudokuInfo[]>("sample-data/ValidSudokus.json");
+       // GenerateSudoku();
+    }
+    void PopulateGridFromPuzzle(int puzzleId)
+    {
+
+        string puzzle = sudokuInfo[puzzleId].Puzzle;
+
+        int index = 0;
+        for (int i = 0; i < 9; i++)
+        {
+            for (int j = 0; j < 9; j++)
+            {
+                GridValues[i, j] = puzzle[index++];
+            }
+        }
+    
+    }
+    public class SudokuInfo
+{
+    public int Id {get; set;}
+    public string Puzzle { get; set; }
+    public string Solution { get; set; }
+    public int? GivenNumbers { get; set; }
+}
+}
