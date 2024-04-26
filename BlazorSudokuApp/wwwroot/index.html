@@ -26,6 +26,13 @@
         <a href="" class="reload">Reload</a>
         <a class="dismiss">🗙</a>
     </div>
+    <script>
+    window.moveCaretToEnd = (element) => {
+    const el = typeof element === 'string' ? document.querySelector(element) : element;
+    el.focus();
+    el.setSelectionRange(el.value.length, el.value.length);
+};
+    </script>
     <script src="_framework/blazor.webassembly.js">
     </script>
 </body>

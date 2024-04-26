@@ -20,15 +20,16 @@
                                 {
                                     var rowIndex = i + k;
                                     var colIndex = j + l;
+                                    
                                     var isVisible = currentRowIndex == i && currentColIndex == j;
                                     <td style="border: 3px solid black;">
                                         <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="1" maxlength="1" 
-                                               @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)" 
+                                               @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)"
                                                onkeypress="return event.key >= '1' && event.key <= '9'"
+                                               @onkeydown:preventDefault="@isPreventKey"
                                                @onkeydown="e => HandleKeyDown(e, rowIndex, colIndex)"
                                                @onmousedown="(e) => HandleMouseDown(e, rowIndex, colIndex)"
                                                @ref="inputCells[rowIndex, colIndex]"
-                                               
                                                style="color: @GridColors[rowIndex, colIndex]; width: 50px; height: 50px; text-align: center; font-size: 2.3em;"
                                                readonly="@(GridColors[rowIndex, colIndex] == "blue" ? true : false)"
                                                />
@@ -56,6 +57,11 @@
     int currentColIndex = 0;
     public ElementReference[,] inputCells = new ElementReference[9, 9];
     public SudokuInfo[]? sudokuInfo;
+    private bool isPreventKey = false;  // Used to conditionally set some key handlers to be default
+
+    async Task MoveCaretToEnd() {
+        await JSRuntime.InvokeVoidAsync("moveCaretToEnd", inputCells[currentRowIndex, currentColIndex]);
+    }
 
     protected override async Task OnInitializedAsync(){
         sudokuInfo = await Http.GetFromJsonAsync<SudokuInfo[]>("sample-data/ValidSudokus.json");
@@ -195,26 +201,46 @@
 
     async Task HandleKeyDown(KeyboardEventArgs e, int row, int col){
         if (e.Key == "ArrowUp" && row > 0){
+            this.isPreventKey = true;
             Console.WriteLine($"Key Pressed: {e.Key}");
             Console.WriteLine($"Current cell is: [{row}, {col}]");
             currentRowIndex = row - 1;
             currentColIndex = col;}
         else if (e.Key == "ArrowDown" && row < 8){
+            this.isPreventKey = true;
             Console.WriteLine($"Key Pressed: {e.Key}");
             currentRowIndex = row + 1;
             currentColIndex = col;}
         else if (e.Key == "ArrowLeft" && col > 0){
+            this.isPreventKey = true;
             Console.WriteLine($"Key Pressed: {e.Key}");
             currentRowIndex = row;
             currentColIndex = col - 1;
         }
         else if (e.Key == "ArrowRight" && col < 8){
+            this.isPreventKey = true;
             Console.WriteLine($"Key Pressed: {e.Key}");
             currentRowIndex = row;
             currentColIndex = col + 1;
         }
-
+        else if (e.Key == "Tab") {
+            this.isPreventKey = true;
+            Console.WriteLine("Tab was pushed");
+            if (col !=8 || row !=8){
+                if (col !=8){
+                    currentColIndex = col+1;
+                    currentRowIndex = row;
+                }
+                else {
+                    currentColIndex = 0;
+                    currentRowIndex = row+1;
+                }
+            }
+            Console.WriteLine($"col = {col}, row = {row}, currentColIndex = {currentColIndex}, currentRowIndex = {currentRowIndex}");
+        }
         await inputCells[currentRowIndex, currentColIndex].FocusAsync();
+        await MoveCaretToEnd();
+        this.isPreventKey = false;
     }
     async Task HandleMouseDown(MouseEventArgs e, int row, int col) {
         currentRowIndex = row;
