@@ -2,6 +2,24 @@
 @inject Blazored.LocalStorage.ILocalStorageService localStorage
 @inject HttpClient Http
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
+@using Models.Sudoku;
+
+
+<style>
+    .highlighted {
+        background-color: lightyellow; /* Change this color as desired */
+    }
+    .notes {
+        font-size: 0.6em; /* Adjust the size of the notes */
+    }
+    .note-item {
+        margin-right: 4px; /* Adjust the margin to increase or decrease spacing */
+        margin-left: 4px;
+        margin-bottom: -0.7px;
+        font-weight: bold;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+</style>
 
 <h1>9x9 Sudoku</h1>
 
@@ -20,20 +38,34 @@
                                 {
                                     var rowIndex = i + k;
                                     var colIndex = j + l;
-                                    
-                                    var isVisible = currentRowIndex == i && currentColIndex == j;
-                                    <td style="border: 3px solid black;">
-                                        <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="1" maxlength="1" 
-                                               @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)"
-                                               onkeypress="return event.key >= '1' && event.key <= '9'"
-                                               @onkeydown:preventDefault="@isPreventKey"
-                                               @onkeydown="e => HandleKeyDown(e, rowIndex, colIndex)"
-                                               @onmousedown="(e) => HandleMouseDown(e, rowIndex, colIndex)"
-                                               @ref="inputCells[rowIndex, colIndex]"
-                                               style="color: @GridColors[rowIndex, colIndex]; width: 50px; height: 50px; text-align: center; font-size: 2.3em;"
-                                               readonly="@(GridColors[rowIndex, colIndex] == "blue" ? true : false)"
-                                               />
-                                    </td>
+                                    <td @onmousedown="(e) => HandleMouseDown(e, rowIndex, colIndex)"style="border: 2px solid black; position: relative;">
+                                    <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="1" maxlength="1"
+                                        @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)"
+                                        onkeypress="return event.key >= '1' && event.key <= '9'"
+                                        @onkeydown:preventDefault="@isPreventKey"
+                                        @onkeydown="e => HandleKeyDown(e, rowIndex, colIndex)"
+                                        @onmousedown="(e) => HandleMouseDown(e, rowIndex, colIndex)"
+                                        @ref="inputCells[rowIndex, colIndex]"
+                                        class="@((currentRowIndex == rowIndex && currentColIndex == colIndex) ? "highlighted" : "")"
+                                        style="color: @GridColors[rowIndex, colIndex]; width: 50px; height: 50px; text-align: center; font-size: 2.3em; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"
+                                        readonly="@(given[rowIndex, colIndex])"
+                                    />
+                                        <div class="notes" style="position: absolute; top: 0; left: 0; right: 0; text-align: center;">
+                                        @for (int rowOffset = 0; rowOffset < 3; rowOffset++)
+                                        {
+                                            <div style="display: flex; justify-content: center;">
+                                                @for (int colOffset = 0; colOffset < 3; colOffset++)
+                                                {
+                                                    int note = rowOffset * 3 + colOffset + 1;
+                                                    if (GridNotes[rowIndex, colIndex] != null && GridNotes[rowIndex, colIndex].Contains(note) && GridValues[rowIndex, colIndex] == null)
+                                                    {
+                                                        <span style="font-size: 1.3em;" class="note-item">@note</span>
+                                                    }
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+                                </td>
                                 }
                             </tr>
                         }
@@ -46,6 +78,8 @@
     <div style="margin-top: 10px;"> <!-- Adjust margin-top as needed -->
     <button @onclick="GenerateSudoku">Generate Board</button>
     <button @onclick="WipeBoard" style="margin-left: 10px;">Clear Board</button> <!-- Adjust margin-left as needed -->
+    <button @onclick="ToggleNotesMode" title="Toggle notes with Spacebar" style="margin-left: 15px;"> Notes (Spacebar)</button>
+
     </div>
 
     
@@ -53,11 +87,39 @@
 @code {
     char?[,] GridValues = new char?[9, 9]; 
     string[,] GridColors = new string[9, 9]; // Add this line to declare GridColors array
-    int currentRowIndex = 0;
-    int currentColIndex = 0;
+    bool[,] given = new bool[9, 9];
+    List<int>?[,] GridNotes = new List<int>?[9, 9];
+    bool[,] originalReadOnlyStatus = new bool[9, 9];
+    int currentRowIndex = 4;
+    int currentColIndex = 4;
     public ElementReference[,] inputCells = new ElementReference[9, 9];
     public SudokuInfo[]? sudokuInfo;
     private bool isPreventKey = false;  // Used to conditionally set some key handlers to be default
+    bool isNotesMode = false;   // Toggles note mode
+
+    void ToggleNotesMode() {
+        isNotesMode = !isNotesMode;
+        
+        if (isNotesMode) {
+            for (int i = 0; i < 9; i++) {
+            for (int j = 0; j < 9; j++) {
+                originalReadOnlyStatus[i, j] = given[i, j];
+                given[i, j] = true; // Set all cells as readonly
+            }
+        }
+            Console.WriteLine("Set to notes mode");
+        }
+        
+        else {
+            for (int i = 0; i < 9; i++) {
+                for (int j = 0; j < 9; j++) {
+                    given[i, j] = originalReadOnlyStatus[i, j];
+                }
+            }
+            Console.WriteLine("Notes mode off");
+        }
+        inputCells[currentRowIndex, currentColIndex].FocusAsync();
+    }
 
     async Task MoveCaretToEnd() {
         await JSRuntime.InvokeVoidAsync("moveCaretToEnd", inputCells[currentRowIndex, currentColIndex]);
@@ -66,9 +128,10 @@
     protected override async Task OnInitializedAsync(){
         sudokuInfo = await Http.GetFromJsonAsync<SudokuInfo[]>("sample-data/ValidSudokus.json");
         await PopulateGridFromLocalStorage(); // Populate the grid from local storage
+        await inputCells[4,4].FocusAsync();
     }
     async Task GenerateSudoku(){
-        await WipeGridFromLocalStorage();
+        await WipeBoard();
 
         Random random = new Random();
         int randomNumber = random.Next(sudokuInfo.Length);
@@ -91,21 +154,22 @@
                     else {
                         // Change the color based on the value
                         GridColors[i,j] = "blue";
+                        given[i, j] = true; // Set given flag to true for blue numbers
                         
                     }
                 }
             }
         }
+        await inputCells[currentRowIndex,currentColIndex].FocusAsync();
      }
     async Task SaveTextToLocalStorage(int row, int col, ChangeEventArgs e){
         Console.WriteLine($"Saving value at row {row}, column {col}");
         var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
         
-        
         try {
             char key = Convert.ToChar(e.Value);
             puzzleInfo.userInputs.Add((row,col,key));
-
+            await localStorage.SetItemAsync("currentPuzzle", puzzleInfo);
         }
         catch {
         var tupleToRemove = puzzleInfo.userInputs.FirstOrDefault(t => t.Item1 == row && t.Item2 == col);    // Searches for the cell to remove the tuple from
@@ -120,112 +184,131 @@
         await localStorage.SetItemAsync<SudokuInfo>($"currentPuzzle", sudokuInfo[puzzleId]);    // Sets the generated puzzle as the current puzzle in local storage
     }
     async Task WipeGridFromLocalStorage() {
-
-        
+        var sudokuInfo = new SudokuInfo(); // Create an instance of SudokuInfo
         await localStorage.RemoveItemAsync("currentPuzzle");                // Removes the current board from local storage
-        var emptySudokuInfo = GenerateEmptySudoku();                        // Creates an empty board Json
+        var emptySudokuInfo = sudokuInfo.GenerateEmptySudoku();                        // Creates an empty board Json
         await localStorage.SetItemAsync("currentPuzzle", emptySudokuInfo);  // Adds the empty board Json to local storage
     }
     async Task WipeBoard(){
         for (int i = 0; i < 9; i++){
             for (int j = 0; j < 9; j++){
                 GridValues[i, j] = null;
-                GridColors[i,j] = "black"; // Changes the color of the number in the grid to turn off readonly
+                GridColors[i, j] = "black"; // Reset cell color
+                given[i, j] = false; // Reset readonly status
+                GridNotes[i,j] = [];
+                if (isNotesMode){
+                    isNotesMode = false;
+                }
             }
         }
-        await WipeGridFromLocalStorage(); // Call the method after clearing the grid in memory
+    
+    // Remove the current puzzle from local storage and add an empty one
+    await WipeGridFromLocalStorage();
+    
+    // Set focus to the first cell
+    await inputCells[currentRowIndex, currentColIndex].FocusAsync();
     }
 
     async Task PopulateGridFromLocalStorage() {
+    var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
+    if (puzzleInfo == null) {
+        // If no puzzle info found or incomplete puzzle info, generate an empty sudoku
+        var sudokuInfo = new SudokuInfo();
+        var emptySudokuInfo = sudokuInfo.GenerateEmptySudoku();
+        await localStorage.SetItemAsync("currentPuzzle", emptySudokuInfo);
+    }
+    else {
+        // If puzzle info found, populate the grid from it
+        string puzzle = puzzleInfo.Puzzle;
         
-        var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");  // Create variable to hold the Json of held sudoku info
-        if (puzzleInfo == null){
-            var emptySudokuInfo = GenerateEmptySudoku();
-            await localStorage.SetItemAsync<SudokuInfo>("currentPuzzle", emptySudokuInfo);
-        }
-        else if (puzzleInfo.Id == null){
-            int index = 0;
-            for (int i = 0; i < 9; i++) {
-                for (int j = 0; j < 9; j++) {
-                    if (puzzleInfo.userInputs.FirstOrDefault(x => x.Item1 == i && x.Item2 == j) != default){
-                        GridValues[i,j] = puzzleInfo.userInputs.FirstOrDefault(x => x.Item1 == i && x.Item2 == j).Item3; 
-                    }
+        for (int i = 0; i < 9; i++) {
+            for (int j = 0; j < 9; j++) {
+                GridColors[i, j] = "black";
+                if (puzzle != ""){
+                    GridValues[i, j] = puzzle[i * 9 + j];
+                }
+                // Check if cell value is not null and not a '.'
+                if (GridValues[i, j] != null && GridValues[i, j] != '.') {
+                    GridColors[i, j] = "blue"; // Set color to blue for non-empty cells
+                    given[i, j] = true; // Set the cell as given (readonly)
+                }
+                else {
+                    GridValues[i, j] = null; // Clear cell value if it's '.'
+                    given[i, j] = false; // Set the cell as not given (not readonly)
+                }
 
-                    if (GridValues[i, j] != null) {
-                        char value = GridValues[i, j].Value;
-                        if (value == '.'){
-                            GridValues[i, j] = null;
-                        }
-                        else {
-                            
+                // Check if there is a user input for this cell
+                var userInput = puzzleInfo.userInputs.FirstOrDefault(x => x.Item1 == i && x.Item2 == j);
+                if (userInput != default) {
+                    GridValues[i, j] = userInput.Item3;
+                }
+                // Initialize notes list for each cell
+                GridNotes[i, j] = new List<int>();
+                // Populate notes from puzzleInfo.Notes
+                var cellNotes = puzzleInfo.Notes.FirstOrDefault(n => n.Item1 == i && n.Item2 == j);
+                if (cellNotes != default) {
+                    foreach (var note in cellNotes.Item3) {
+                        if (note.Item2) {
+                            GridNotes[i, j].Add(int.Parse(note.Item1.ToString()));
                         }
                     }
                 }
             }
         }
-        else {
-
-            string puzzle = puzzleInfo.Puzzle;
-            int index = 0;
-            for (int i = 0; i < 9; i++) {
-                for (int j = 0; j < 9; j++) {
-                    GridColors[i,j] = "black";
-                    GridValues[i, j] = puzzle[index++];
-                    if (GridValues[i, j] != null) {
-                        char value = GridValues[i, j].Value;
-                        if (value == '.'){
-                            GridValues[i, j] = null;
-                        }
-                        else {
-                            GridColors[i,j] = "blue";
-                            
-                        }
-                        if (puzzleInfo.userInputs.FirstOrDefault(x => x.Item1 == i && x.Item2 == j) != default){
-                        GridValues[i,j] = puzzleInfo.userInputs.FirstOrDefault(x => x.Item1 == i && x.Item2 == j).Item3; 
-                    }
-                    }
-                }
-            }
-        }
     }
-    public SudokuInfo GenerateEmptySudoku(){
-        var emptySudokuInfo = new SudokuInfo{
-                Id = null,
-                Puzzle = "",
-                Solution = "",
-                GivenNumbers = 0,
-                userInputs = []
-            };
-        return emptySudokuInfo;
-    }
+}
 
     async Task HandleKeyDown(KeyboardEventArgs e, int row, int col){
-        if (e.Key == "ArrowUp" && row > 0){
+        if (e.Key == "ArrowUp" || e.Key == "w"){
+            if (row > 0){
             this.isPreventKey = true;
-            Console.WriteLine($"Key Pressed: {e.Key}");
-            Console.WriteLine($"Current cell is: [{row}, {col}]");
             currentRowIndex = row - 1;
-            currentColIndex = col;}
-        else if (e.Key == "ArrowDown" && row < 8){
+            currentColIndex = col;
+            }
+            else {
+                this.isPreventKey = true;
+                currentRowIndex = 8;
+                currentColIndex = col;
+            }
+        }
+        else if (e.Key == "ArrowDown" || e.Key == "s"){
+            if (row < 8){
             this.isPreventKey = true;
-            Console.WriteLine($"Key Pressed: {e.Key}");
             currentRowIndex = row + 1;
-            currentColIndex = col;}
-        else if (e.Key == "ArrowLeft" && col > 0){
+            currentColIndex = col;
+            }
+            else {
+                this.isPreventKey = true;
+                currentRowIndex = 0;
+                currentColIndex = col;
+            }
+        }
+        else if (e.Key == "ArrowLeft" || e.Key == "a" || e.Key == "q"){
+            if (col > 0){
             this.isPreventKey = true;
-            Console.WriteLine($"Key Pressed: {e.Key}");
             currentRowIndex = row;
             currentColIndex = col - 1;
+            }
+            else {
+                this.isPreventKey = true;
+                currentRowIndex = row;
+                currentColIndex = 8;
+            }
         }
-        else if (e.Key == "ArrowRight" && col < 8){
+        else if (e.Key == "ArrowRight" || e.Key == "d" || e.Key == "e"){
+            if (col < 8){
             this.isPreventKey = true;
-            Console.WriteLine($"Key Pressed: {e.Key}");
             currentRowIndex = row;
             currentColIndex = col + 1;
+            }
+            else {
+                this.isPreventKey = true;
+                currentRowIndex = row;
+                currentColIndex = 0;
+            }
         }
         else if (e.Key == "Tab") {
             this.isPreventKey = true;
-            Console.WriteLine("Tab was pushed");
             if (col !=8 || row !=8){
                 if (col !=8){
                     currentColIndex = col+1;
@@ -236,24 +319,54 @@
                     currentRowIndex = row+1;
                 }
             }
-            Console.WriteLine($"col = {col}, row = {row}, currentColIndex = {currentColIndex}, currentRowIndex = {currentRowIndex}");
+        }
+        else if (e.Key == " ") {
+            this.isPreventKey = true;
+            ToggleNotesMode();
+        }
+        else if ((e.Key == "1" || e.Key == "2" || e.Key == "3" || e.Key == "4" || e.Key == "5" || e.Key == "6" || e.Key == "7" || e.Key == "8" || e.Key == "9") 
+            && isNotesMode){
+                var key = int.Parse(e.Key);
+                if (GridNotes[row, col].Contains(key)) {
+                    GridNotes[row, col].Remove(key);
+                }
+                else {
+                    GridNotes[row, col].Add(key);
+                }
+            await inputCells[row, col].FocusAsync();
+                this.isPreventKey = true;
+                var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
+                
+                // Check if the Notes list contains a note at the specified row and col
+                var existingNoteIndex = puzzleInfo.Notes.FindIndex(note => note.Item1 == row && note.Item2 == col);
+
+                if (existingNoteIndex != -1) {
+                    // If the note exists, get the list of tuples and add the new tuple to it
+                    var tuples = puzzleInfo.Notes[existingNoteIndex].Item3;
+                    var existingTupleIndex = tuples.FindIndex(tuple => tuple.Item1 == Convert.ToChar(e.Key));
+                    if (existingTupleIndex != -1) {
+                         // If the tuple exists, toggle the boolean value in the second item
+                        tuples[existingTupleIndex] = (tuples[existingTupleIndex].Item1, !tuples[existingTupleIndex].Item2);
+                    }
+                    else {
+                        // If the tuple does not exist, add a new tuple to the list
+                        tuples.Add((Convert.ToChar(e.Key), true));
+                    }
+                }
+                else {
+                    // If the note does not exist, add a new note with the tuple
+                    puzzleInfo.Notes.Add((row, col, new List<(char, bool)> { (Convert.ToChar(e.Key), true) }));
+                }
+                await localStorage.SetItemAsync("currentPuzzle", puzzleInfo);
         }
         await inputCells[currentRowIndex, currentColIndex].FocusAsync();
         await MoveCaretToEnd();
         this.isPreventKey = false;
     }
     async Task HandleMouseDown(MouseEventArgs e, int row, int col) {
+        Console.WriteLine($"Handle Mouse Down is being registered");
         currentRowIndex = row;
         currentColIndex = col;
         await inputCells[currentRowIndex, currentColIndex].FocusAsync();
-    }
-    
-
-    public class SudokuInfo {
-        public int? Id {get; set;}
-        public string? Puzzle { get; set; }
-        public string? Solution { get; set; }
-        public int? GivenNumbers { get; set; }
-        public List<(int, int, char)>? userInputs {get; set;} = new List<(int, int, char)>();
-    }
+    }    
 }
