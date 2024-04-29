@@ -159,4 +159,57 @@ public class Solver
             return "no solution";
         }
     }
+   
+    public (bool isValid, string invalidCells) BoardValidator(string sudoku)
+    {
+        if (sudoku.Length != 81)
+            throw new ArgumentException("Invalid input length. Expected 81 characters.");
+
+        HashSet<string> invalidCells = new HashSet<string>();
+
+        for (int row = 0; row < 9; row++)
+        {
+            for (int col = 0; col < 9; col++)
+            {
+                char currentChar = sudoku[row * 9 + col];
+
+                if (currentChar != '.')
+                {
+                    // Check rows and columns
+                    for (int i = 0; i < 9; i++)
+                    {
+                        if ((i != row && sudoku[i * 9 + col] == currentChar) ||
+                            (i != col && sudoku[row * 9 + i] == currentChar))
+                        {
+                            invalidCells.Add($"({row+1},{col+1})");
+                            break;
+                        }
+                    }
+
+                    // Check 3x3 grid
+                    int startRow = row - row % 3;
+                    int startCol = col - col % 3;
+                    for (int i = startRow; i < startRow + 3; i++)
+                    {
+                        for (int j = startCol; j < startCol + 3; j++)
+                        {
+                            if (!(i == row && j == col) && sudoku[i * 9 + j] == currentChar)
+                            {
+                                invalidCells.Add($"({row+1},{col+1})");
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (invalidCells.Count == 0)
+            return (true, "");
+        else
+            return (false, string.Join(" ", invalidCells));
+    }
 }
+
+
+

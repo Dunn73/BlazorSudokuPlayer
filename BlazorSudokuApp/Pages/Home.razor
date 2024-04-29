@@ -8,6 +8,15 @@
 @using System.Diagnostics
 
 <style>
+    body {
+        background-color: aliceblue;
+        
+    }
+    button {
+        background-color: #d0f5f1;
+        border-radius: 5px;
+        font-weight: bold;
+    }
     .highlighted {
         background-color: lightyellow; /* Change this color as desired */
     }
@@ -24,7 +33,7 @@
 </style>
 
 <div style="display: flex; flex-direction: column; align-items: center;">
-    <h1>9x9 Sudoku</h1>
+    <h1 style="margin-right: 88px;">@($"Sudoku {puzzleId}")</h1>
 
     <div style="display: flex; align-items: center;">
         <table border="5" cellpadding="0" cellspacing="0">
@@ -80,18 +89,27 @@
             }
         </table>
 
-        <div style="margin-left: 20px;"> <!-- Adjust margin-left as needed -->
-            <button @onclick="SolveSudoku" style="margin-top: 10px; margin-bottom: 50px;">Solve</button>
+        <div style="margin-left: 20px; display: flex; flex-direction: column;"> <!-- Adjust margin-left and flex-direction as needed -->
+            <button @onclick="SolveSudoku" style="margin-top: 10px; margin-bottom: 10px; height: 40px;">Solve</button>
+            <button @onclick="UnsolveSudoku" style="margin-top: 10px; height: 40px;">Unsolve</button>
+            <button @onclick="SolveTile" style="margin-top: 50px;">Solve<br>Tile</button>
         </div>
     </div>
 
-    <div style="margin-top: 10px; display: flex; justify-content: center;"> <!-- Adjust margin-top and other styles as needed -->
+    <div style="margin-top: 10px; display: flex; justify-content: center; margin-right: 80px;"> <!-- Adjust margin-top and other styles as needed -->
         <div style="display: flex; justify-content: center; width: 100%;"> <!-- New container for the buttons with width constraint -->
-            <button @onclick="GenerateSudoku" style="margin-left: 10px;">Generate Board</button>
-            <button @onclick="WipeBoard" style="margin-left: 10px;">Clear Board</button>
-            <button @onclick="ToggleNotesMode" title="Toggle notes with Spacebar" style="margin-left: 10px; margin-right: 87px">Notes (Spacebar)</button>
+            <button @onclick="GenerateSudoku"  style=" margin-right: 25px; height">Generate Board</button>
+            <button @onclick="WipeBoard" style=" margin-right: 25px;">Clear Board</button>
+            <button @onclick="ToggleNotesMode" title="Toggle notes with Spacebar" style=" margin-right: 9px;">Notes (Spacebar)</button>
+            <div class="alert alert-@($"{noteMessageColor}")" role="alert" style="text-align: center; height: 30px; font-size: 12px;
+            justify-content: center; display: flex; align-items: center;">@($"{noteMessage}")
+            </div>
         </div>
     </div>
+
+    <div class="alert alert-primary" role="alert" style="margin-top: 10px; height: 50px; width: 350px; margin-right: 95px; text-align: center;">
+    @($"{alertMessage}")
+</div>
 </div>
 
 @code {
@@ -106,13 +124,21 @@
     public ElementReference[,] inputCells = new ElementReference[9, 9];
     public SudokuInfo[]? sudokuInfo;
     public Solver? solver = new();
+    Stopwatch solveTimer = new();
     private bool isPreventKey = false;  // Used to conditionally set some key handlers to be default
     bool isNotesMode = false;   // Toggles note mode
+    string puzzleId;
+    string alertMessage;
+    string noteMessage = "Off";
+    string noteMessageColor = "danger";
+    
 
     void ToggleNotesMode() {
         isNotesMode = !isNotesMode;
         
         if (isNotesMode) {
+            noteMessageColor="success";
+            noteMessage = "On";
             for (int i = 0; i < 9; i++) {
             for (int j = 0; j < 9; j++) {
                 originalReadOnlyStatus[i, j] = given[i, j];
@@ -123,6 +149,8 @@
         }
         
         else {
+            noteMessageColor="danger";
+            noteMessage = "Off";
             for (int i = 0; i < 9; i++) {
                 for (int j = 0; j < 9; j++) {
                     given[i, j] = originalReadOnlyStatus[i, j];
@@ -133,47 +161,102 @@
         inputCells[currentRowIndex, currentColIndex].FocusAsync();
     }
     async Task SolveSudoku(){
-        Stopwatch stopwatch = new();
         
         var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
         if (puzzleInfo.Id != null){
-            if (puzzleInfo.CurrentPuzzle == puzzleInfo.Solution){
-                var output = "Congratulations: Sudoku solved!";
-                 Console.WriteLine(output);
-            }
-            else {
+            if (puzzleInfo.CurrentPuzzle != puzzleInfo.Solution){
                 for (int i = 0; i < puzzleInfo.CurrentPuzzle.Length; i++){
                     if (puzzleInfo.CurrentPuzzle[i] == '.')
-                    GridColors[i/9, i%9] = "red";
+                    GridColors[i/9, i%9] = "#cc3535";
                     GridValues[i/9, i%9] = puzzleInfo.Solution[i];
                 }
             }
         }
         else {
         string sudoku = puzzleInfo.CurrentPuzzle;
-        stopwatch.Start();
         var output = solver.SolveSudoku(sudoku);
         if (sudoku == output){
-            Console.WriteLine("This is a solved Sudoku");
+            alertMessage="This is a solved Sudoku";
         }
         else if (output == "invalid board"){
-            Console.WriteLine("This board is invalid");
+            alertMessage = "Invalid Board";
         }
         else if (output == "no solution"){
-            Console.WriteLine("This board has no solution");
+            alertMessage = "No Solution";
         }
         else {
             for (int i = 0; i < sudoku.Length; i++){
                     if (puzzleInfo.CurrentPuzzle[i] == '.')
-                    GridColors[i/9, i%9] = "red";
+                    GridColors[i/9, i%9] = "#cc3535";
                     GridValues[i/9, i%9] = output[i];
                 }
+            alertMessage="Sudoku solved";
         }
-        var elapsedTime = stopwatch.Elapsed.TotalMilliseconds;
-        Console.WriteLine($"It took: {elapsedTime} milliseconds to find this solution");
-        stopwatch.Stop();
-        Console.WriteLine(output);
         }
+        inputCells[currentRowIndex, currentColIndex].FocusAsync();
+        
+    }
+    async Task SolveTile() {
+        var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
+        StringBuilder puzzleUpdater = new StringBuilder(puzzleInfo.CurrentPuzzle);
+        
+        if (puzzleInfo.Id != null){
+            if (puzzleInfo.Puzzle[currentRowIndex*9 + currentColIndex] == '.' ){
+                GridValues[currentRowIndex, currentColIndex] = puzzleInfo.Solution[currentRowIndex*9 + currentColIndex];
+                puzzleUpdater[currentRowIndex*9 + currentColIndex] = puzzleInfo.Solution[currentRowIndex*9 + currentColIndex];
+                puzzleInfo.CurrentPuzzle = puzzleUpdater.ToString();
+
+                // Check if there is a user input for this cell
+                    var userInput = puzzleInfo.userInputs.FirstOrDefault(x => x.Item1 == currentRowIndex && x.Item2 == currentColIndex);
+                    if (userInput == default) {
+                        puzzleInfo.userInputs.Add((currentRowIndex, currentColIndex, puzzleInfo.Solution[currentRowIndex*9 + currentColIndex]));
+                    }
+                    else {
+                        var tupleToRemove = puzzleInfo.userInputs.FirstOrDefault(t => t.Item1 == currentRowIndex && t.Item2 == currentColIndex);
+                        puzzleInfo.userInputs.Remove(tupleToRemove);
+                        puzzleInfo.userInputs.Add((currentRowIndex, currentColIndex, puzzleInfo.Solution[currentRowIndex*9 + currentColIndex]));
+                    }
+                await localStorage.SetItemAsync("currentPuzzle", puzzleInfo);
+            }
+        }
+        inputCells[currentRowIndex, currentColIndex].FocusAsync();
+    }
+    async Task UnsolveSudoku() {
+        var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
+        if (puzzleInfo.Id != null){
+            await PopulateGridFromLocalStorage();
+        }
+        else {
+
+            for (int i = 0; i < 9; i++) {
+                for (int j = 0; j < 9; j++) {
+                    GridColors[i, j] = "black";
+                    if (puzzleInfo.CurrentPuzzle[i*9 + j] == '.'){
+                        GridValues[i,j] = null;
+                    }
+                    
+
+                    // Check if there is a user input for this cell
+                    var userInput = puzzleInfo.userInputs.FirstOrDefault(x => x.Item1 == i && x.Item2 == j);
+                    if (userInput != default) {
+                        GridValues[i, j] = userInput.Item3;
+                    }
+                    // Initialize notes list for each cell
+                    GridNotes[i, j] = new List<int>();
+                    // Populate notes from puzzleInfo.Notes
+                    var cellNotes = puzzleInfo.Notes.FirstOrDefault(n => n.Item1 == i && n.Item2 == j);
+                    if (cellNotes != default) {
+                        foreach (var note in cellNotes.Item3) {
+                            if (note.Item2) {
+                                GridNotes[i, j].Add(int.Parse(note.Item1.ToString()));
+                            }
+                        }
+                    }
+                }
+        }
+
+        }
+        inputCells[currentRowIndex, currentColIndex].FocusAsync();
         
     }
     async Task MoveCaretToEnd() {
@@ -219,6 +302,8 @@
                 }
             }
         }
+        puzzleId = "# " + currentInfo.Id.ToString();
+        alertMessage = $"Sudoku # {currentInfo.Id} Generated";
         await inputCells[currentRowIndex,currentColIndex].FocusAsync();
      }
     async Task SaveTextToLocalStorage(int row, int col, ChangeEventArgs e){
@@ -230,15 +315,34 @@
             puzzleUpdater[row*9 + col] = key;
             puzzleInfo.userInputs.Add((row,col,key));
             puzzleInfo.CurrentPuzzle = puzzleUpdater.ToString();
+            if (puzzleInfo.Id != null){
+                if (puzzleInfo.CurrentPuzzle == puzzleInfo.Solution){
+                    alertMessage = $"Congratulations! Sudoku solved in ";
+                }
+            }
             
         }
         catch {
-        var tupleToRemove = puzzleInfo.userInputs.FirstOrDefault(t => t.Item1 == row && t.Item2 == col);    // Searches for the cell to remove the tuple from
-        puzzleInfo.userInputs.Remove(tupleToRemove);
-        puzzleUpdater[row*9 + col] = '.';
-        puzzleInfo.CurrentPuzzle = puzzleUpdater.ToString();
-
+            var tupleToRemove = puzzleInfo.userInputs.FirstOrDefault(t => t.Item1 == row && t.Item2 == col);    // Searches for the cell to remove the tuple from
+            puzzleInfo.userInputs.Remove(tupleToRemove);
+            puzzleUpdater[row*9 + col] = '.';
+            puzzleInfo.CurrentPuzzle = puzzleUpdater.ToString();
         }
+        if (solver.BoardValidator(puzzleInfo.CurrentPuzzle).Item1 == false){
+            alertMessage = $"Duplicates: {solver.BoardValidator(puzzleInfo.CurrentPuzzle).Item2}";
+        }
+        else{
+            
+            try{
+                if  (alertMessage.Contains("Duplicate")){
+                    alertMessage = "Board now Valid";
+                }
+            }
+            catch {
+
+            }
+    }
+
         await localStorage.SetItemAsync("currentPuzzle", puzzleInfo);
 
     }
@@ -253,6 +357,8 @@
         await localStorage.SetItemAsync("currentPuzzle", emptySudokuInfo);  // Adds the empty board Json to local storage
     }
     async Task WipeBoard(){
+        alertMessage="Board Cleared";
+        puzzleId ="";
         for (int i = 0; i < 9; i++){
             for (int j = 0; j < 9; j++){
                 GridValues[i, j] = null;
@@ -281,6 +387,9 @@
         await localStorage.SetItemAsync("currentPuzzle", emptySudokuInfo);
     }
     else {
+        if (puzzleInfo.Id.ToString() !="")
+        puzzleId = "# " + puzzleInfo.Id.ToString();
+
         // If puzzle info found, populate the grid from it
         string puzzle = puzzleInfo.Puzzle;
         
