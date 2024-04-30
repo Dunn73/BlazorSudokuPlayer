@@ -3,9 +3,11 @@
 @inject HttpClient Http
 @inject Microsoft.JSInterop.IJSRuntime JSRuntime
 @using Models.Sudoku;
+@using Models.SolvedPuzzles;
 @using Controllers.SudokuSolver;
 @using System.Text;
 @using System.Diagnostics
+@using Microsoft.FluentUI.AspNetCore.Components;
 
 <style>
     body {
@@ -32,8 +34,15 @@
     }
 </style>
 
-<div style="display: flex; flex-direction: column; align-items: center;">
-    <h1 style="margin-right: 88px;">@($"Sudoku {puzzleId}")</h1>
+<div @onclick="(e) => HandleMouseDown(e, currentRowIndex, currentColIndex)" @onclick:preventDefault="@isPreventClick"
+    style ="display: flex; flex-direction: column; align-items: center;">
+    <!-- Header and Timer Container -->
+    <div style="display: flex; justify-content: center; align-items: center;">
+        <h1 style="margin-right: 20px;">@($"Sudoku {puzzleId}")</h1>
+        <div class="alert alert-info" role="alert" style="height: 40px; font-size: 14px; justify-content: center; display: flex; align-items: center;">
+            Time: @($"{under10Hours}{elapsedTimeHours}:{under10Minutes}{elapsedTimeMinutes}:{under10Seconds}{elapsedTimeSeconds}")
+        </div>
+    </div>
 
     <div style="display: flex; align-items: center;">
         <table border="5" cellpadding="0" cellspacing="0">
@@ -51,7 +60,7 @@
                                         {
                                             var rowIndex = i + k;
                                             var colIndex = j + l;
-                                            <td @onmousedown="(e) => HandleMouseDown(e, rowIndex, colIndex)"style="border: 2px solid black; position: relative;">
+                                            <td @onmousedown="(e) => HandleMouseDown(e, currentRowIndex, currentColIndex)"style="border: 2px solid black; position: relative;">
                                                 <input @bind="@GridValues[rowIndex, colIndex]" type="text" min="1" max="9" required size="1" maxlength="1"
                                                        @oninput="async (e) => await SaveTextToLocalStorage(rowIndex, colIndex, e)"
                                                        onkeypress="return event.key >= '1' && event.key <= '9'"
@@ -90,29 +99,42 @@
         </table>
 
         <div style="margin-left: 20px; display: flex; flex-direction: column;"> <!-- Adjust margin-left and flex-direction as needed -->
+            <div class="alert alert-secondary" role="alert" style="height: 40px; font-size: 14px; justify-content: center; display: flex; align-items: center;
+            background-color: #d7d8d9; margin-bottom: 60px; width: 90px; height: 60px; font-weight: bold; padding-left: 5px;">
+            @($"Solved: {totalSolved}\n Hints: {hintsUsed}")
+        </div>
             <button @onclick="SolveSudoku" style="margin-top: 10px; margin-bottom: 10px; height: 40px;">Solve</button>
             <button @onclick="UnsolveSudoku" style="margin-top: 10px; height: 40px;">Unsolve</button>
             <button @onclick="SolveTile" style="margin-top: 50px;">Solve<br>Tile</button>
         </div>
     </div>
 
-    <div style="margin-top: 10px; display: flex; justify-content: center; margin-right: 80px;"> <!-- Adjust margin-top and other styles as needed -->
+    <div @onclick:preventDefault="false" style="margin-top: 10px; display: flex; justify-content: center; margin-right: 80px;"> <!-- Adjust margin-top and other styles as needed -->
         <div style="display: flex; justify-content: center; width: 100%;"> <!-- New container for the buttons with width constraint -->
             <button @onclick="GenerateSudoku"  style=" margin-right: 25px; height">Generate Board</button>
             <button @onclick="WipeBoard" style=" margin-right: 25px;">Clear Board</button>
             <button @onclick="ToggleNotesMode" title="Toggle notes with Spacebar" style=" margin-right: 9px;">Notes (Spacebar)</button>
-            <div class="alert alert-@($"{noteMessageColor}")" role="alert" style="text-align: center; height: 30px; font-size: 12px;
+            <div class="alert alert-@($"{noteMessageColor}")" role="alert" style="text-align: center; height: 30px; font-size: 12px; width: 30px;
             justify-content: center; display: flex; align-items: center;">@($"{noteMessage}")
             </div>
         </div>
     </div>
-
-    <div class="alert alert-primary" role="alert" style="margin-top: 10px; height: 50px; width: 350px; margin-right: 95px; text-align: center;">
+    
+    <div class="alert alert-primary" role="alert" style="margin-top: 10px; height: 50px; width: 350px; margin-right: 95px; text-align: center;
+                justify-content: center; display: flex; align-items: center;">
     @($"{alertMessage}")
 </div>
 </div>
 
 @code {
+
+    public IconInfo timeMessageIcon = new IconInfo {
+        Name = "WeatherSunny",
+        Size = IconSize.Size24,
+        Variant = IconVariant.Filled
+    };
+
+    // Placeholder variables for different grid elements
     char?[,] Sudoku = new char?[9,9];
     char?[,] GridValues = new char?[9, 9]; 
     string[,] GridColors = new string[9, 9]; // Add this line to declare GridColors array
@@ -124,15 +146,33 @@
     public ElementReference[,] inputCells = new ElementReference[9, 9];
     public SudokuInfo[]? sudokuInfo;
     public Solver? solver = new();
-    Stopwatch solveTimer = new();
+    private bool isPreventClick = true;
     private bool isPreventKey = false;  // Used to conditionally set some key handlers to be default
     bool isNotesMode = false;   // Toggles note mode
     string puzzleId;
     string alertMessage;
+    bool generatedPuzzle = false;
+    int hintsUsed = 0;
+    int totalSolved = 0;
+
+    // Time variables
+    int elapsedTimeSeconds = 0; 
+    int elapsedTimeMinutes = 0;
+    int elapsedTimeHours = 0;
+
+    // 0 placeholder variables for time
+    string under10Hours = "0";
+    string under10Minutes = "0";
+    string under10Seconds = "0";
+
+    // Note on/off and color toggle 
     string noteMessage = "Off";
     string noteMessageColor = "danger";
-    
 
+    // Define cancellation token source and token
+    private CancellationTokenSource cancellationTokenSource;
+    private CancellationToken cancellationToken;
+    
     void ToggleNotesMode() {
         isNotesMode = !isNotesMode;
         
@@ -145,7 +185,6 @@
                 given[i, j] = true; // Set all cells as readonly
             }
         }
-            Console.WriteLine("Set to notes mode");
         }
         
         else {
@@ -156,7 +195,6 @@
                     given[i, j] = originalReadOnlyStatus[i, j];
                 }
             }
-            Console.WriteLine("Notes mode off");
         }
         inputCells[currentRowIndex, currentColIndex].FocusAsync();
     }
@@ -198,10 +236,16 @@
     }
     async Task SolveTile() {
         var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
+        var solvedInfo = await localStorage.GetItemAsync<List<Solved>>("solved");
         StringBuilder puzzleUpdater = new StringBuilder(puzzleInfo.CurrentPuzzle);
         
+        // Solve tile button actions when using a generated board
         if (puzzleInfo.Id != null){
             if (puzzleInfo.Puzzle[currentRowIndex*9 + currentColIndex] == '.' ){
+                if (puzzleInfo.CurrentPuzzle[currentRowIndex*9 + currentColIndex] == '.'){
+                    hintsUsed ++;
+                    await localStorage.SetItemAsync("hintsUsed", hintsUsed);
+                }
                 GridValues[currentRowIndex, currentColIndex] = puzzleInfo.Solution[currentRowIndex*9 + currentColIndex];
                 puzzleUpdater[currentRowIndex*9 + currentColIndex] = puzzleInfo.Solution[currentRowIndex*9 + currentColIndex];
                 puzzleInfo.CurrentPuzzle = puzzleUpdater.ToString();
@@ -218,6 +262,44 @@
                     }
                 await localStorage.SetItemAsync("currentPuzzle", puzzleInfo);
             }
+            if (puzzleInfo.CurrentPuzzle == puzzleInfo.Solution){
+                StopTimer();
+                Solved solved = new();
+                // Handle completion of sudoku
+                solved.Id = puzzleInfo.Id;
+                solved.HintsUsed = hintsUsed;
+                solved.HoursMinutesSeconds = (elapsedTimeHours, elapsedTimeMinutes, elapsedTimeSeconds);
+                solved.AddOrUpdateSolvedData(solved, solvedInfo);
+                await localStorage.SetItemAsync("solved", solvedInfo);
+                alertMessage = $"Congratulations! Sudoku solved in {under10Hours}{elapsedTimeHours}:{under10Minutes}{elapsedTimeMinutes}:{under10Seconds}{elapsedTimeSeconds}";  
+            }  
+            await PopulateSolvedFromLocalStorage();
+        }
+        
+
+        // Solve tile button actions when using a custom board
+        else {
+            
+            string? solution = solver.SolveSudoku(puzzleInfo.CurrentPuzzle);
+
+            if (GridValues[currentRowIndex, currentColIndex] == null){
+
+            
+                if (solution == "invalid board"){
+                    alertMessage = $"Invalid at: {solver.BoardValidator(puzzleInfo.CurrentPuzzle).Item2}";
+                }
+                else if (solution == "no solution"){
+                    alertMessage = $"Board has no solution";
+                }
+                else {
+                    puzzleUpdater[currentRowIndex*9 + currentColIndex] = solution[currentRowIndex*9 + currentColIndex];
+                    puzzleInfo.userInputs.Add((currentRowIndex, currentColIndex, solution[currentRowIndex*9 + currentColIndex]));
+                    puzzleInfo.CurrentPuzzle = puzzleUpdater.ToString();
+                    GridValues[currentRowIndex, currentColIndex] = solution[currentRowIndex*9 + currentColIndex];
+                    await localStorage.SetItemAsync("currentPuzzle", puzzleInfo);
+                }
+            }
+
         }
         inputCells[currentRowIndex, currentColIndex].FocusAsync();
     }
@@ -264,12 +346,37 @@
     }
 
     protected override async Task OnInitializedAsync(){
+        
         sudokuInfo = await Http.GetFromJsonAsync<SudokuInfo[]>("sample-data/ValidSudokus.json");
+        await ResumeTimer();
         await PopulateGridFromLocalStorage(); // Populate the grid from local storage
+        await PopulateSolvedFromLocalStorage(); // Populates solved from local storage
         await inputCells[4,4].FocusAsync();
+        alertMessage = GetGreetingMessage();
+        hintsUsed = await localStorage.GetItemAsync<int>("hintsUsed");
+    }
+    async Task PopulateSolvedFromLocalStorage(){
+        var solvedInfo = await localStorage.GetItemAsync<List<Solved>>("solved");
+        
+        if (solvedInfo == null) {
+
+            // If no solved info found generate an empty solved list
+            var solvedInfoCreator = new Solved();
+            var solvedInfoCreated = solvedInfoCreator.GenerateEmptySolvedData();
+            await localStorage.SetItemAsync("solved", solvedInfoCreated);
+        }
+        else {
+            totalSolved = solvedInfo.Count;
+        }
     }
     async Task GenerateSudoku(){
+    
         await WipeBoard();
+
+        cancellationTokenSource = new CancellationTokenSource();
+        cancellationToken = cancellationTokenSource.Token;
+        
+        Timer();
 
         Random random = new Random();
         int randomNumber = random.Next(sudokuInfo.Length);
@@ -306,8 +413,48 @@
         alertMessage = $"Sudoku # {currentInfo.Id} Generated";
         await inputCells[currentRowIndex,currentColIndex].FocusAsync();
      }
+    async Task Timer(){
+            
+        try {
+            while (!cancellationToken.IsCancellationRequested) {
+                var timeInfo = (elapsedTimeHours, elapsedTimeMinutes, elapsedTimeSeconds);
+                await localStorage.SetItemAsync<(int, int, int)>("clock", timeInfo);
+                await Task.Delay(980, cancellationToken); // Pass cancellation token to delay
+                elapsedTimeSeconds ++;
+                if (elapsedTimeSeconds > 9){
+                    under10Seconds = null;
+                }
+                if (elapsedTimeSeconds > 59){
+                    under10Seconds = "0";
+                    elapsedTimeMinutes ++;
+                    elapsedTimeSeconds = 0;
+                }
+                if (elapsedTimeMinutes > 9){
+                    under10Minutes = null;
+                }
+                if (elapsedTimeMinutes > 59){
+                    under10Minutes = "0";
+                    elapsedTimeHours ++;
+                    elapsedTimeMinutes = 0;
+                }
+                if (elapsedTimeHours > 9){
+                    under10Hours = null;
+                }
+                StateHasChanged();
+            }
+        } 
+        catch (TaskCanceledException) {
+            // Task was canceled, exit the timer loop
+        }
+        StateHasChanged();
+    }
+    
+     private void StopTimer() {
+        cancellationTokenSource?.Cancel();
+    }
     async Task SaveTextToLocalStorage(int row, int col, ChangeEventArgs e){
         var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
+        var solvedInfo = await localStorage.GetItemAsync<List<Solved>>("solved");
         StringBuilder puzzleUpdater = new StringBuilder(puzzleInfo.CurrentPuzzle); 
         
         try {
@@ -317,7 +464,15 @@
             puzzleInfo.CurrentPuzzle = puzzleUpdater.ToString();
             if (puzzleInfo.Id != null){
                 if (puzzleInfo.CurrentPuzzle == puzzleInfo.Solution){
-                    alertMessage = $"Congratulations! Sudoku solved in ";
+                    StopTimer();
+                    Solved solved = new();
+                    // Handle completion of sudoku
+                    solved.Id = puzzleInfo.Id;
+                    solved.HintsUsed = hintsUsed;
+                    solved.HoursMinutesSeconds = (elapsedTimeHours, elapsedTimeMinutes, elapsedTimeSeconds);
+                    solved.AddOrUpdateSolvedData(solved, solvedInfo);
+                    await localStorage.SetItemAsync("solved", solvedInfo);
+                    alertMessage = $"Congratulations! Sudoku solved in {under10Hours}{elapsedTimeHours}:{under10Minutes}{elapsedTimeMinutes}:{under10Seconds}{elapsedTimeSeconds}";
                 }
             }
             
@@ -334,15 +489,14 @@
         else{
             
             try{
-                if  (alertMessage.Contains("Duplicate")){
+                if  (alertMessage.Contains("Duplicate") || alertMessage.Contains("Invalid")){
                     alertMessage = "Board now Valid";
                 }
             }
             catch {
 
             }
-    }
-
+        }
         await localStorage.SetItemAsync("currentPuzzle", puzzleInfo);
 
     }
@@ -357,6 +511,19 @@
         await localStorage.SetItemAsync("currentPuzzle", emptySudokuInfo);  // Adds the empty board Json to local storage
     }
     async Task WipeBoard(){
+
+        hintsUsed = 0;
+        await localStorage.SetItemAsync("hintsUsed", 0);
+        await localStorage.SetItemAsync("clock", (0,0,0));
+        elapsedTimeSeconds = 0;
+        elapsedTimeMinutes = 0;
+        elapsedTimeHours = 0;
+        under10Seconds ="0";
+        under10Minutes = "0";
+        under10Hours = "0";
+        StopTimer();
+        isPreventClick = false;
+        await inputCells[currentRowIndex, currentColIndex].FocusAsync();
         alertMessage="Board Cleared";
         puzzleId ="";
         for (int i = 0; i < 9; i++){
@@ -376,10 +543,37 @@
     
     // Set focus to the first cell
     await inputCells[currentRowIndex, currentColIndex].FocusAsync();
+    isPreventClick = true;
+    }
+
+    async Task ResumeTimer() {
+        var timerInfo = await localStorage.GetItemAsync<(int,int,int)>("clock");
+        elapsedTimeHours = timerInfo.Item1;
+        elapsedTimeMinutes = timerInfo.Item2;
+        elapsedTimeSeconds = timerInfo.Item3;
+        if (elapsedTimeSeconds > 9){
+                    under10Seconds = null;
+                }
+        if (elapsedTimeMinutes > 9){
+                    under10Minutes = null;
+                }
+        if (elapsedTimeHours > 9){
+            under10Hours = null;
+        }
+            
+
+        cancellationTokenSource = new CancellationTokenSource();
+        cancellationToken = cancellationTokenSource.Token;
+
+        if (timerInfo != (0, 0, 0)){
+            
+            Timer();
+        }
     }
 
     async Task PopulateGridFromLocalStorage() {
     var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
+        
     if (puzzleInfo == null) {
         // If no puzzle info found or incomplete puzzle info, generate an empty sudoku
         var sudokuInfo = new SudokuInfo();
@@ -541,17 +735,34 @@
                 await localStorage.SetItemAsync("currentPuzzle", currentPuzzle);
 
             }
-            Console.WriteLine("Backspace was pressed");
         }
         await inputCells[currentRowIndex, currentColIndex].FocusAsync();
         await MoveCaretToEnd();
         this.isPreventKey = false;
     }
     async Task HandleMouseDown(MouseEventArgs e, int row, int col) {
-        Console.WriteLine($"Handle Mouse Down is being registered");
         currentRowIndex = row;
         currentColIndex = col;
         await inputCells[currentRowIndex, currentColIndex].FocusAsync();
+    }
+
+    public string GetGreetingMessage() {
+        // Get the current time
+        DateTime currentTime = DateTime.Now;
+
+        // Determine the time of day
+        if (currentTime.Hour >= 3 && currentTime.Hour < 12) {
+            // Morning (3:00 AM to 11:59 AM)
+            return "Good Morning";
+        }
+        else if (currentTime.Hour >= 12 && currentTime.Hour < 18) {
+            // Afternoon (12:00 PM to 5:59 PM)
+            return "Good Afternoon";
+        }
+        else {
+            // Evening (6:00 PM to 2:59 AM)
+            return "Good Evening";
+        }
     }
     
 }
