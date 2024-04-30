@@ -18,6 +18,9 @@
         background-color: #d0f5f1;
         border-radius: 5px;
         font-weight: bold;
+        
+        
+        
     }
     .highlighted {
         background-color: lightyellow; /* Change this color as desired */
@@ -402,8 +405,8 @@
                     }
                     else {
                         // Change the color based on the value
-                        GridColors[i,j] = "blue";
-                        given[i, j] = true; // Set given flag to true for blue numbers
+                        GridColors[i,j] = "darkslateblue";
+                        given[i, j] = true; 
                         
                     }
                 }
@@ -474,6 +477,7 @@
                     await localStorage.SetItemAsync("solved", solvedInfo);
                     alertMessage = $"Congratulations! Sudoku solved in {under10Hours}{elapsedTimeHours}:{under10Minutes}{elapsedTimeMinutes}:{under10Seconds}{elapsedTimeSeconds}";
                 }
+                await PopulateSolvedFromLocalStorage();
             }
             
         }
@@ -547,6 +551,7 @@
     }
 
     async Task ResumeTimer() {
+        var puzzleInfo = await localStorage.GetItemAsync<SudokuInfo>("currentPuzzle");
         var timerInfo = await localStorage.GetItemAsync<(int,int,int)>("clock");
         elapsedTimeHours = timerInfo.Item1;
         elapsedTimeMinutes = timerInfo.Item2;
@@ -565,7 +570,7 @@
         cancellationTokenSource = new CancellationTokenSource();
         cancellationToken = cancellationTokenSource.Token;
 
-        if (timerInfo != (0, 0, 0)){
+        if (timerInfo != (0, 0, 0) && puzzleInfo.CurrentPuzzle != puzzleInfo.Solution){
             
             Timer();
         }
@@ -595,7 +600,7 @@
                 }
                 // Check if cell value is not null and not a '.'
                 if (GridValues[i, j] != null && GridValues[i, j] != '.') {
-                    GridColors[i, j] = "blue"; // Set color to blue for non-empty cells
+                    GridColors[i, j] = "darkslateblue";
                     given[i, j] = true; // Set the cell as given (readonly)
                 }
                 else {
